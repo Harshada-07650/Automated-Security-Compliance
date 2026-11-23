@@ -14,6 +14,7 @@ pipeline {
 
         IMAGE_NAME = 'devsecops-demo'
         IMAGE_TAG = "${BUILD_NUMBER}"
+        PROJECT_DIR = 'automated-security-compliance-cicd'
     }
 
     stages {
@@ -38,7 +39,7 @@ pipeline {
         stage('IaC Security Scan') {
             steps {
                 sh '''
-                    checkov -d kubernetes --framework kubernetes
+                    checkov -d ${PROJECT_DIR}/kubernetes --framework kubernetes
                 '''
             }
         }
@@ -49,7 +50,7 @@ pipeline {
                     sh '''
                         sonar-scanner \
                           -Dsonar.projectKey=automated-security-compliance \
-                          -Dsonar.sources=app
+                          -Dsonar.sources=${PROJECT_DIR}/app
                     '''
                 }
             }
@@ -60,7 +61,8 @@ pipeline {
                 sh '''
                     docker build \
                       -t ${IMAGE_NAME}:${IMAGE_TAG} \
-                      -f app/Dockerfile app
+                      -f ${PROJECT_DIR}/app/Dockerfile \
+                      ${PROJECT_DIR}/app
                 '''
             }
         }
