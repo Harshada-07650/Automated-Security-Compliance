@@ -22,7 +22,7 @@ pipeline {
       steps {
         sh '''
           set -e
-          trivy fs --scanners vuln,misconfig,secret --severity HIGH,CRITICAL --exit-code 1 .
+          /usr/local/bin/trivy fs --scanners vuln,misconfig,secret --severity HIGH,CRITICAL --exit-code 1 automated-security-compliance-cicd
         '''
       }
     }
@@ -67,3 +67,4 @@ pipeline {
     }
   }
 }
+
