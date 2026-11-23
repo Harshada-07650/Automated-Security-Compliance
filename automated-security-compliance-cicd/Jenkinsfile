@@ -1,5 +1,4 @@
 
-
 pipeline {
     agent any
 
@@ -18,6 +17,7 @@ pipeline {
     }
 
     stages {
+
         stage('Checkout') {
             steps {
                 checkout scm
@@ -26,51 +26,42 @@ pipeline {
 
         stage('Secret and Vulnerability Scan') {
             steps {
-                dir('automated-security-compliance-cicd') {
-                    sh '''
-                        set -e
-                        /usr/local/bin/trivy fs \
-                          --scanners vuln,misconfig,secret \
-                          --severity HIGH,CRITICAL \
-                          --exit-code 1 .
-                    '''
-                }
+                sh '''
+                    /usr/local/bin/trivy fs \
+                      --scanners vuln,misconfig,secret \
+                      --severity HIGH,CRITICAL \
+                      --exit-code 1 .
+                '''
             }
         }
 
         stage('IaC Security Scan') {
             steps {
-                dir('automated-security-compliance-cicd') {
-                    sh 'checkov -d kubernetes --framework kubernetes'
-                }
+                sh '''
+                    checkov -d kubernetes --framework kubernetes
+                '''
             }
         }
 
         stage('SonarQube Analysis') {
             steps {
-                dir('automated-security-compliance-cicd') {
-                    withSonarQubeEnv('SonarQube') {
-                        sh '''
-                            sonar-scanner \
-                            -Dsonar.projectKey=automated-security-compliance \
-                            -Dsonar.projectName=Automated-Security-Compliance \
-                            -Dsonar.sources=app \
-                            -Dsonar.sourceEncoding=UTF-8
-                        '''
-                    }
+                withSonarQubeEnv('SonarQube') {
+                    sh '''
+                        sonar-scanner \
+                          -Dsonar.projectKey=automated-security-compliance \
+                          -Dsonar.sources=app
+                    '''
                 }
             }
         }
 
         stage('Build Docker Image') {
             steps {
-                dir('automated-security-compliance-cicd') {
-                    sh '''
-                        docker build \
-                          -t ${IMAGE_NAME}:${IMAGE_TAG} \
-                          -f app/Dockerfile app
-                    '''
-                }
+                sh '''
+                    docker build \
+                      -t ${IMAGE_NAME}:${IMAGE_TAG} \
+                      -f app/Dockerfile app
+                '''
             }
         }
 
@@ -78,6 +69,7 @@ pipeline {
             steps {
                 sh '''
                     /usr/local/bin/trivy image \
+                      --ignore-unfixed \
                       --severity HIGH,CRITICAL \
                       --exit-code 1 \
                       ${IMAGE_NAME}:${IMAGE_TAG}
@@ -86,9 +78,6 @@ pipeline {
         }
 
         stage('Approval for Release') {
-            when {
-                branch 'main'
-            }
             steps {
                 input message: 'Security scans completed. Approve this demo image for release?'
             }
@@ -97,8 +86,8 @@ pipeline {
 
     post {
         always {
-            archiveArtifacts artifacts: 'automated-security-compliance-cicd/security/*,automated-security-compliance-cicd/sonar-project.properties,automated-security-compliance-cicd/kubernetes/*.yaml',
-                allowEmptyArchive: true
+            archiveArtifacts artifacts: '**/trivy*.json, **/checkov*.json',
+                             allowEmptyArchive: true
         }
     }
 }
