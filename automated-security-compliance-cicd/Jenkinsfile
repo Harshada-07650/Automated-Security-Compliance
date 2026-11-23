@@ -1,4 +1,5 @@
 
+
 pipeline {
     agent any
 
@@ -8,9 +9,12 @@ pipeline {
     }
 
     environment {
+        DOCKER_HOST = 'tcp://docker:2376'
+        DOCKER_TLS_VERIFY = '1'
+        DOCKER_CERT_PATH = '/var/jenkins_home/docker-certs'
+
         IMAGE_NAME = 'devsecops-demo'
         IMAGE_TAG = "${BUILD_NUMBER}"
-        DOCKER_HOST = 'tcp://docker:2375'
     }
 
     stages {
@@ -34,44 +38,50 @@ pipeline {
             }
         }
 
-stage('IaC Security Scan') {
-    steps {
-        dir('automated-security-compliance-cicd') {
-            sh 'checkov -d kubernetes --framework kubernetes'
-        }
-    }
-}
-
-
-        
-stage('SonarQube Analysis') {
-    steps {
-        dir('automated-security-compliance-cicd') {
-            withSonarQubeEnv('SonarQube') {
-                sh '''
-                    sonar-scanner \
-                    -Dsonar.projectKey=automated-security-compliance \
-                    -Dsonar.projectName=Automated-Security-Compliance \
-                    -Dsonar.sources=app \
-                    -Dsonar.sourceEncoding=UTF-8
-                '''
+        stage('IaC Security Scan') {
+            steps {
+                dir('automated-security-compliance-cicd') {
+                    sh 'checkov -d kubernetes --framework kubernetes'
+                }
             }
         }
-    }
-}
 
+        stage('SonarQube Analysis') {
+            steps {
+                dir('automated-security-compliance-cicd') {
+                    withSonarQubeEnv('SonarQube') {
+                        sh '''
+                            sonar-scanner \
+                            -Dsonar.projectKey=automated-security-compliance \
+                            -Dsonar.projectName=Automated-Security-Compliance \
+                            -Dsonar.sources=app \
+                            -Dsonar.sourceEncoding=UTF-8
+                        '''
+                    }
+                }
+            }
+        }
 
         stage('Build Docker Image') {
             steps {
                 dir('automated-security-compliance-cicd') {
-                    sh 'docker build -t ${IMAGE_NAME}:${IMAGE_TAG} -f app/Dockerfile app'
+                    sh '''
+                        docker build \
+                          -t ${IMAGE_NAME}:${IMAGE_TAG} \
+                          -f app/Dockerfile app
+                    '''
                 }
             }
         }
 
         stage('Container Image Scan') {
             steps {
-                sh '/usr/local/bin/trivy image --severity HIGH,CRITICAL --exit-code 1 ${IMAGE_NAME}:${IMAGE_TAG}'
+                sh '''
+                    /usr/local/bin/trivy image \
+                      --severity HIGH,CRITICAL \
+                      --exit-code 1 \
+                      ${IMAGE_NAME}:${IMAGE_TAG}
+                '''
             }
         }
 
