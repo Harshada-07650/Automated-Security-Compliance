@@ -1,71 +1,94 @@
+
 pipeline {
-  agent any
+    agent any
 
-  options {
-    timestamps()
-    disableConcurrentBuilds()
-  }
-
-  environment {
-    IMAGE_NAME = 'devsecops-demo'
-    IMAGE_TAG = "${BUILD_NUMBER}"
-  }
-
-  stages {
-    stage('Checkout') {
-      steps {
-        checkout scm
-      }
+    options {
+        timestamps()
+        disableConcurrentBuilds()
     }
 
-    stage('Secret and Vulnerability Scan') {
-      steps {
-        sh '''
-          set -e
-          /usr/local/bin/trivy fs --scanners vuln,misconfig,secret --severity HIGH,CRITICAL --exit-code 1 automated-security-compliance-cicd
-        '''
-      }
+    environment {
+        IMAGE_NAME = 'devsecops-demo'
+        IMAGE_TAG = "${BUILD_NUMBER}"
+        DOCKER_HOST = 'tcp://docker:2375'
     }
 
-    stage('IaC Security Scan') {
-      steps {
-        sh 'checkov -d kubernetes --framework kubernetes'
-      }
-    }
-
-    stage('SonarQube Analysis') {
-      steps {
-        withSonarQubeEnv('SonarQube') {
-          sh 'sonar-scanner'
+    stages {
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
         }
-      }
-    }
 
-    stage('Build Docker Image') {
-      steps {
-        sh 'docker build -t ${IMAGE_NAME}:${IMAGE_TAG} ./app'
-      }
-    }
+        stage('Secret and Vulnerability Scan') {
+            steps {
+                dir('automated-security-compliance-cicd') {
+                    sh '''
+                        set -e
+                        /usr/local/bin/trivy fs \
+                          --scanners vuln,misconfig,secret \
+                          --severity HIGH,CRITICAL \
+                          --exit-code 1 .
+                    '''
+                }
+            }
+        }
 
-    stage('Container Image Scan') {
-      steps {
-        sh 'trivy image --severity HIGH,CRITICAL --exit-code 1 ${IMAGE_NAME}:${IMAGE_TAG}'
-      }
+stage('IaC Security Scan') {
+    steps {
+        dir('automated-security-compliance-cicd') {
+            sh 'checkov -d kubernetes --framework kubernetes'
+        }
     }
-
-    stage('Approval for Release') {
-      when { branch 'main' }
-      steps {
-        input message: 'Security scans completed. Approve this demo image for release?'
-      }
-    }
-  }
-
-  post {
-    always {
-      archiveArtifacts artifacts: 'security/*,sonar-project.properties,kubernetes/*.yaml', allowEmptyArchive: true
-    }
-  }
 }
 
 
+        
+stage('SonarQube Analysis') {
+    steps {
+        dir('automated-security-compliance-cicd') {
+            withSonarQubeEnv('SonarQube') {
+                sh '''
+                    sonar-scanner \
+                    -Dsonar.projectKey=automated-security-compliance \
+                    -Dsonar.projectName=Automated-Security-Compliance \
+                    -Dsonar.sources=app \
+                    -Dsonar.sourceEncoding=UTF-8
+                '''
+            }
+        }
+    }
+}
+
+
+        stage('Build Docker Image') {
+            steps {
+                dir('automated-security-compliance-cicd') {
+                    sh 'docker build -t ${IMAGE_NAME}:${IMAGE_TAG} -f app/Dockerfile app'
+                }
+            }
+        }
+
+        stage('Container Image Scan') {
+            steps {
+                sh '/usr/local/bin/trivy image --severity HIGH,CRITICAL --exit-code 1 ${IMAGE_NAME}:${IMAGE_TAG}'
+            }
+        }
+
+        stage('Approval for Release') {
+            when {
+                branch 'main'
+            }
+            steps {
+                input message: 'Security scans completed. Approve this demo image for release?'
+            }
+        }
+    }
+
+    post {
+        always {
+            archiveArtifacts artifacts: 'automated-security-compliance-cicd/security/*,automated-security-compliance-cicd/sonar-project.properties,automated-security-compliance-cicd/kubernetes/*.yaml',
+                allowEmptyArchive: true
+        }
+    }
+}
