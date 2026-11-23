@@ -19,12 +19,6 @@ pipeline {
 
     stages {
 
-        stage('Checkout') {
-            steps {
-                checkout scm
-            }
-        }
-
         stage('Secret and Vulnerability Scan') {
             steps {
                 sh '''
@@ -39,7 +33,8 @@ pipeline {
         stage('IaC Security Scan') {
             steps {
                 sh '''
-                    checkov -d ${PROJECT_DIR}/kubernetes --framework kubernetes
+                    checkov -d ${PROJECT_DIR}/kubernetes \
+                      --framework kubernetes
                 '''
             }
         }
@@ -88,8 +83,10 @@ pipeline {
 
     post {
         always {
-            archiveArtifacts artifacts: '**/trivy*.json, **/checkov*.json',
-                             allowEmptyArchive: true
+            archiveArtifacts(
+                artifacts: '**/trivy*.json, **/checkov*.json',
+                allowEmptyArchive: true
+            )
         }
     }
 }
